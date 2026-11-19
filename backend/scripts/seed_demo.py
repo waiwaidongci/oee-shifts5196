@@ -1,11 +1,13 @@
-import json,random
+import json,random,hashlib,time
 from src.config.database import Base,engine,Session
 from src.config.settings import CONFIG
 from src.models.identity import User
 from src.models.source import Source,Policy,Period
 from src.models import run
+from src.models.run import Run
 from src.utils.security import password_hash
 from src.services.validation import validate_source
+from src.services.calculation import calculate
 
 def demo_rows():
  rng=random.Random(42);rows=[]
@@ -25,5 +27,11 @@ def seed():
    validate_source(data);key='demo-'+str(i+1)
    if not db.query(Source).filter_by(natural_key=key).first():db.add(Source(natural_key=key,data=data))
   if not db.query(Policy).filter_by(version=CONFIG['policy']['version']).first():db.add(Policy(version=CONFIG['policy']['version'],data=CONFIG['policy']))
+  if not db.query(Run).filter_by(name='seed-十一月核算').first():
+   sources=[x.data for x in db.query(Source).order_by(Source.id).all()]
+   if sources:
+    snapshot={'policy':CONFIG['policy'],'sources':sources,'period':'全部'}
+    checksum=hashlib.sha256(json.dumps(snapshot,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+    db.add(Run(name='seed-十一月核算',status='completed',snapshot=snapshot,checksum=checksum,result=calculate(sources,CONFIG['policy']),created=time.time(),approved=True,review='seed复核：口径与数值已核对，可用于工单对账演示'))
   db.commit();print(json.dumps({'users':db.query(User).count(),'sources':db.query(Source).count(),'policies':db.query(Policy).count(),'periods':db.query(Period).count()},ensure_ascii=False))
 if __name__=='__main__':seed()
